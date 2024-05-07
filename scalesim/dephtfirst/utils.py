@@ -1,4 +1,5 @@
 from enum import Enum
+import numpy as np
 
 
 class df_mode(Enum):
@@ -53,6 +54,7 @@ class Layer:
         return Layer(array[0], input, None, filter, stride)
     
     def __str__(self):
+        """Used for debug purposes."""
         return f"Layer ID: {self.layer_id}, \
             Input: {self.input}, \
             Output: {self.output}, \
@@ -63,17 +65,32 @@ class Tile:
     """
     Represents a tile in the depth-first scheduling simulation.
     """
+
+    @staticmethod
+    def from_layer(layer):
+        """
+        Create a tile from a layer.
+        """
+        return Tile(layer.input, layer.filter, layer.output, layer.layer_id)
+    
     def __init__(self, Ifsize, filter_size, OfSize, layer_id,):
         self.Ifsize = Ifsize
         self.filter_size = filter_size
         self.OfSize = OfSize
         self.layer_id = layer_id
-    
-    @staticmethod
-    def from_layer(layer):
-        return Tile(layer.input, layer.filter, layer.output, layer.layer_id)
+
+    def to_operands(self) -> tuple:
+        """
+        Convert the tile to a tuple containing the 3 matrices operands.
+        """
+        
+        input = np.ones(self.Ifsize, dtype=int)
+        filter = np.ones(self.filter_size, dtype=int)
+        output = np.ones(self.OfSize, dtype=int)
+        return input, filter, output
 
     def __str__(self):
+        """Used for debug purposes."""
         return f"Ifsize: {self.Ifsize}, \
             Filter size: {self.filter_size}, \
             OfSize: {self.OfSize}, \
