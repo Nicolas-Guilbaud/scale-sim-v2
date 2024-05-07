@@ -16,8 +16,8 @@ class report:
         self.filter_dram_report = dram_report(operand.FILTER)
         self.ofmap_dram_report = dram_report(operand.OFMAP)
     
-    def generate_report(self,compute_system,memory_system):
-        self.compute_report.generate_report(compute_system,memory_system)
+    def generate_report(self,compute_system,memory_system,num_mac_unit):
+        self.compute_report.generate_report(compute_system,memory_system,num_mac_unit)
 
         self.ifmap_sram_report.generate_report(memory_system,compute_system)
         self.filter_sram_report.generate_report(memory_system,compute_system)
@@ -62,15 +62,14 @@ class compute_report:
         self.total_cycles = 0
         self.stall_cycles = 0
         self.num_compute = 0
-        self.num_mac_unit = 0
         self.overall_util = 0
         self.mapping_eff = 0
         self.compute_util = 0
     
-    def generate_report(self,compute_system, memory_system):
+    def generate_report(self,compute_system, memory_system,num_mac_unit):
         self.total_cycles = memory_system.get_total_compute_cycles()
         self.stall_cycles = memory_system.get_stall_cycles()
-        self.overall_util = (self.num_compute * 100) / (self.total_cycles * self.num_mac_unit)
+        self.overall_util = (self.num_compute * 100) / (self.total_cycles * num_mac_unit)
         self.mapping_eff = compute_system.get_avg_mapping_efficiency() * 100
         self.compute_util = compute_system.get_avg_compute_utilization() * 100
     
@@ -84,7 +83,6 @@ class compute_report:
         result.total_cycles = self.total_cycles + other.total_cycles
         result.stall_cycles = self.stall_cycles + other.stall_cycles
         result.num_compute = self.num_compute + other.num_compute
-        result.num_mac_unit = self.num_mac_unit + other.num_mac_unit
         result.overall_util = self.overall_util + other.overall_util
         result.mapping_eff = self.mapping_eff + other.mapping_eff
         result.compute_util = self.compute_util + other.compute_util

@@ -1,5 +1,11 @@
+import sys
+import os
+
+sys.path.append(os.getcwd())
+
 from scalesim.scale_config import scale_config as cfg
 from scalesim.topology_utils import topologies as topo
+from scalesim.compute.operand_matrix import operand_matrix as opmat
 from scalesim.compute.systolic_compute_os import systolic_compute_os
 from scalesim.compute.systolic_compute_ws import systolic_compute_ws
 from scalesim.compute.systolic_compute_is import systolic_compute_is
@@ -16,10 +22,15 @@ class depth_first_sim:
     def __init__(self):
         self.topo = topo()
         self.config = cfg()
-        self.report = report()
         self.compute_system = systolic_compute_os()
         self.memory_system = mem_dbsp()
+        
         self.total_report = report()
+        self.op_mat_obj = opmat()
+
+        self.memory_system_ready_flag = False
+        self.runs_ready = False
+        self.verbose = True
 
     def set_memory_system(self, mem_sys_obj=mem_dbsp()):
         self.memory_system = mem_sys_obj
@@ -64,6 +75,9 @@ class depth_first_sim:
             self.compute_system = systolic_compute_ws()
         elif self.dataflow == 'is':
             self.compute_system = systolic_compute_is()
+        
+        arr_dims = self.config.get_array_dims()
+        self.num_mac_unit = arr_dims[0] * arr_dims[1]
 
     
     def run(self):
@@ -82,37 +96,39 @@ class depth_first_sim:
         
         #TODO: perform the following for each scheduled tiles !
 
-        print("FOR 1 TILE:")
+        for tile in scheduled_tiles[:20]:
+            self.process_a_tile(tile)
+        print(self.total_report)
 
 
-        # 3. Prepare demand for 1 tile
+    def process_a_tile(self,tile):
+        
+        # 3. Prepare demand for the tile
         # This part is a copy-paste from the run function inside single_layer_sim.py file
 
         #3.1 Setup compute system
-        input_mat, filter_mat, output_mat = scheduled_tiles[0].to_operands()
+        self.op_mat_obj.set_params_tile(config_obj=self.config,
+                                        topoutil_obj=self.topo,
+                                        tile=tile)
+
+        _, input_mat = self.op_mat_obj.get_ifmap_matrix()
+        _, filter_mat = self.op_mat_obj.get_filter_matrix()
+        _, output_mat = self.op_mat_obj.get_ofmap_matrix()
+
+        self.num_compute = self.topo.get_layer_num_ofmap_px(tile.layer_id) \
+                           * self.topo.get_layer_window_size(tile.layer_id)
+        
         self.compute_system.set_params(config_obj=self.config,
                                        ifmap_op_mat=input_mat,
                                        filter_op_mat=filter_mat,
                                        ofmap_op_mat=output_mat)
-        print("DEMANDS:")
-        print(len(input_mat))
-        print(len(filter_mat))
-        print(len(output_mat))
-
-
-        print("GETTING DEMAND")
 
         # 3.2 Get the demand for the first tile
         ifmap_prefetch_mat, filter_prefetch_mat = self.compute_system.get_prefetch_matrices()
 
-        print("DEMANDS:")
-        print(len(ifmap_prefetch_mat))
-        print(len(filter_prefetch_mat))
-
-        return
         ifmap_demand_mat, filter_demand_mat, ofmap_demand_mat = self.compute_system.get_demand_matrices()
 
-        print("SETTING UP MEMORY")
+
         # 3.3 Setup memory system
         self.setup_memory_if_not_ready()
 
@@ -126,12 +142,10 @@ class depth_first_sim:
 
         # 5. Generate report
         tile_report = report()
-        tile_report.generate_report(self.compute_system,self.memory_system)
+        tile_report.generate_report(self.compute_system,self.memory_system,self.num_mac_unit)
 
         # 5. Add results and repeat for next tile
-        total_report = total_report + tile_report
-        print(total_report)
-        pass
+        self.total_report = self.total_report + tile_report
 
     def setup_memory_if_not_ready(self):
         """
@@ -240,8 +254,9 @@ class depth_first_sim:
                 for i in range(2):
                     input_size.append(filter_size[i] + (output_size[i]-1)*stride[i])
                 input_size = tuple(input_size)
-                
-                tiles.append(Tile(input_size, filter_size, output_size, layer[0]))
+                layer_id = self.topo.get_layer_id_from_name(layer[0])
+
+                tiles.append(Tile(input_size, filter_size, output_size, layer_id))
                 output_size = input_size # input of current layer = size of the tile of the next layer
 
         # Reverse the construction to process the tiles in the order according to layer
@@ -257,10 +272,6 @@ class depth_first_sim:
         # TODO: return a list of list of tiles
 
 if __name__ == "__main__":
-    import sys
-    import os
-    
-    sys.path.append(os.getcwd())
     runner = depth_first_sim()
     runner.set_params(
         conf_file="./configs/scale.cfg",

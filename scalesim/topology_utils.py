@@ -356,7 +356,7 @@ class topologies(object):
             return
         indx = -1
         for i in range(len(self.topo_arrays)):
-            if layer_name == self.topo_arrays[i]:
+            if layer_name == self.topo_arrays[i][0]:
                 indx = i
         if indx == -1:
             print("WARNING: Not found")

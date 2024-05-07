@@ -38,7 +38,47 @@ class operand_matrix(object):
         self.params_set_flag = False
         self.matrices_ready_flag = False
 
-    #
+    def set_params_tile(self, config_obj, topoutil_obj, tile):
+        self.topoutil = topoutil_obj
+        self.config = config_obj
+        self.layer_id = tile.layer_id
+        self.ifmap_rows, self.ifmap_cols = tile.Ifsize
+        self.filter_rows, self.filter_cols = tile.filter_size
+        self.num_input_channels = self.topoutil.get_layer_num_channels(self.layer_id)
+        self.num_filters = self.topoutil.get_layer_num_filters(self.layer_id)
+        self.row_stride, self.col_stride = self.topoutil.get_layer_strides(self.layer_id)
+        # TODO: Marked for cleanup
+        #self.row_stride = layer_hyper_param_arr[6]
+        #if len(layer_hyper_param_arr) == 8:
+        #    self.col_stride = layer_hyper_param_arr[7]
+
+        # TODO: Anand
+        # TODO: Next release
+        # TODO: Add an option for batching
+        self.batch_size = 1
+
+        # TODO: Marked for cleanup
+        #if len(layer_hyper_param_arr) == 9:
+        #    self.batch_size = layer_hyper_param_arr[8]
+
+        # Assign the calculated hyper parameters
+        self.ofmap_rows, self.ofmap_cols = tile.OfSize
+        self.ofmap_rows = int(self.ofmap_rows)
+        self.ofmap_cols = int(self.ofmap_cols)
+        self.ofmap_px_per_filt = int(self.ofmap_rows * self.ofmap_cols)
+        self.conv_window_size = int(self.topoutil.get_layer_window_size(self.layer_id))
+
+        # Assign the offsets
+        self.ifmap_offset, self.filter_offset, self.ofmap_offset \
+            = self.config.get_offsets()
+
+        # Address matrices: This is needed to take into account the updated dimensions
+        self.ifmap_addr_matrix = np.ones((self.ofmap_px_per_filt * self.batch_size, self.conv_window_size), dtype='>i4')
+        self.filter_addr_matrix = np.ones((self.conv_window_size, self.num_filters), dtype='>i4')
+        self.ofmap_addr_matrix = np.ones((self.ofmap_px_per_filt, self.num_filters), dtype='>i4')
+        self.params_set_flag = True
+
+
     def set_params(self,
                    config_obj,
                    topoutil_obj,
@@ -49,26 +89,11 @@ class operand_matrix(object):
         self.topoutil = topoutil_obj
         self.layer_id = layer_id
 
-        # TODO: Marked for cleanup
-        #my_name = 'operand_matrix.set_params(): '
-        #err_prefix = 'Error: ' + my_name
-        #
-        #if (not len(layer_hyper_param_arr) == 7 and not len(layer_hyper_param_arr) == 8
-        #        and not len(layer_hyper_param_arr) == 9) or (not len(layer_calc_hyper_param_arr) == 4) \
-        #        or (not len(self.matrix_offset_arr) == 3):
-        #    message = err_prefix + 'Invalid arguments. Exiting.'
-        #    print(message)
-        #    return -1
-
         self.ifmap_rows, self.ifmap_cols = self.topoutil.get_layer_ifmap_dims(self.layer_id)
         self.filter_rows, self.filter_cols = self.topoutil.get_layer_filter_dims(self.layer_id)
         self.num_input_channels = self.topoutil.get_layer_num_channels(self.layer_id)
         self.num_filters = self.topoutil.get_layer_num_filters(self.layer_id)
         self.row_stride, self.col_stride = self.topoutil.get_layer_strides(self.layer_id)
-        # TODO: Marked for cleanup
-        #self.row_stride = layer_hyper_param_arr[6]
-        #if len(layer_hyper_param_arr) == 8:
-        #    self.col_stride = layer_hyper_param_arr[7]
 
         # TODO: Anand
         # TODO: Next release
