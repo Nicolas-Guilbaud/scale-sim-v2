@@ -73,11 +73,12 @@ class Tile:
         """
         return Tile(layer.input, layer.filter, layer.output, layer.layer_id)
     
-    def __init__(self, Ifsize, filter_size, OfSize, layer_id,):
+    def __init__(self, Ifsize, filter_size, OfSize, layer_id,cached_elements=0):
         self.Ifsize = Ifsize
         self.filter_size = filter_size
         self.OfSize = OfSize
         self.layer_id = layer_id
+        self.cached_elements = cached_elements # Number of elements in the tile that are already cached
 
     def to_operands(self) -> tuple:
         """
@@ -94,4 +95,5 @@ class Tile:
         return f"Ifsize: {self.Ifsize}, \
             Filter size: {self.filter_size}, \
             OfSize: {self.OfSize}, \
-            Layer ID: {self.layer_id}"
+            Layer ID: {self.layer_id}, \
+            Cached Elements: {self.cached_elements}"

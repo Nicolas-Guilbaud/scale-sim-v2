@@ -16,7 +16,7 @@ from math import ceil
 
 class depth_first_sim:
     """
-    class to run depth-first scheduling simulation.
+    class to run a depth-first scheduling simulation.
     See https://github.com/KULeuven-MICAS/defines
     """
     def __init__(self):
@@ -33,6 +33,12 @@ class depth_first_sim:
         self.verbose = True
 
     def set_memory_system(self, mem_sys_obj=mem_dbsp()):
+        """
+        setup the memory system for the simulation.
+
+        Args:
+        - mem_sys_obj: memory system object
+        """
         self.memory_system = mem_sys_obj
         self.memory_system_ready_flag = True
 
@@ -42,7 +48,7 @@ class depth_first_sim:
                     read_gemm_inputs=False,
                     df_mode=df_mode.FULL_RECOMPUTE,
                     tile_size=(1,1),
-                    layer_fuse_cuts=[], #Format: [layer_1, layer_4]
+                    layer_fuse_cuts=[], #Format: [layer_name_1, layer_name_4]
                    ):
         """
         Set the parameters for the depth-first simulation.
@@ -69,20 +75,24 @@ class depth_first_sim:
         # Setup the compute system
         self.dataflow = self.config.get_dataflow()
 
-        if self.dataflow == 'os':
-            self.compute_system = systolic_compute_os()
-        elif self.dataflow == 'ws':
-            self.compute_system = systolic_compute_ws()
-        elif self.dataflow == 'is':
-            self.compute_system = systolic_compute_is()
+        match self.dataflow:
+            case 'os':
+                self.compute_system = systolic_compute_os()
+            case 'ws':
+                self.compute_system = systolic_compute_ws()
+            case 'is':
+                self.compute_system = systolic_compute_is()
         
         arr_dims = self.config.get_array_dims()
         self.num_mac_unit = arr_dims[0] * arr_dims[1]
 
     
-    def run(self):
+    def run(self, truncator=None):
         """
         Run the depth-first simulation.
+
+        Args:
+        - truncator: function to truncate the list of tiles to compute.
         """
         scheduled_tiles = [] # tiles to compute
         
@@ -96,13 +106,22 @@ class depth_first_sim:
         
         #TODO: perform the following for each scheduled tiles !
 
-        for tile in scheduled_tiles[:20]:
+        if truncator:
+            truncated_list = truncator(scheduled_tiles)
+
+        for tile in truncated_list:
             self.process_a_tile(tile)
         print(self.total_report)
 
 
     def process_a_tile(self,tile):
-        
+        """
+        Used to simulate the processing of one tile.
+
+        Args:
+        - tile: Tile object
+        """
+
         # 3. Prepare demand for the tile
         # This part is a copy-paste from the run function inside single_layer_sim.py file
 
@@ -194,12 +213,6 @@ class depth_first_sim:
                     estimate_bandwidth_mode=estimate_bandwidth_mode
             )
 
-    def request_tiles_computation(self):
-        """
-        Request a computation of tiles.
-        """
-        pass
-
     def create_stack_list(self):
         """
         Create a list of stacks of layers based on the layer_fuse_cuts.
@@ -228,9 +241,16 @@ class depth_first_sim:
     def stack_tiling(self,stack):
         """
         returns a list of tiles given a stack.
-        the tiles are expressed as follow:
-        - layer Args, nber of tiles
+        The tiles are expressed as follow:
+        - input_size : Tuple(int,int)
+        - filter_size : Tuple(int,int)
+        - output_size : Tuple(int,int)
+        - layer_id : int
+        - cached_elems : int
         
+        Args:
+        - stack: list of layers
+
         """
 
         #TODO: make it work with cached mode
@@ -242,22 +262,43 @@ class depth_first_sim:
         nb_tiles_y = ceil(last_layer[2]/self.tile_size[1])
 
         tiles = [] # store the tiles
-        for _ in range(nb_tiles_x*nb_tiles_y):
+        for rows in range(nb_tiles_y):
+            #condition to cache the rows
+            cache_rows = rows > 0 and self.df_mode == df_mode.FULL_CACHED
 
-            output_size = self.tile_size
+            for cols in range(nb_tiles_x):
+                #condition to cache the columns
+                cache_cols = cols > 0 and self.df_mode != df_mode.FULL_RECOMPUTE
 
-            # Backward loop to create the tiles
-            for i,layer in enumerate(stack[::-1]):
-                filter_size = (layer[3], layer[4])
-                stride = (layer[7], layer[8])
-                input_size = []
-                for i in range(2):
-                    input_size.append(filter_size[i] + (output_size[i]-1)*stride[i])
-                input_size = tuple(input_size)
-                layer_id = self.topo.get_layer_id_from_name(layer[0])
+                output_size = self.tile_size
 
-                tiles.append(Tile(input_size, filter_size, output_size, layer_id))
-                output_size = input_size # input of current layer = size of the tile of the next layer
+                # Backward loop to create the tiles
+                for i,layer in enumerate(stack[::-1]):
+                    # Get size of the tile
+                    filter_size = (layer[3], layer[4])
+                    stride = (layer[7], layer[8])
+                    input_size = []
+                    for i in range(2):
+                        input_size.append(filter_size[i] + (output_size[i]-1)*stride[i])
+                    input_size = tuple(input_size)
+
+                    layer_id = self.topo.get_layer_id_from_name(layer[0])
+
+                    # Mark elements of the tile that need to be cached
+                    cached_elems, rows_cached, cols_cached = self.calculate_cached_elems(
+                        filter=filter_size,
+                        stride=stride, 
+                        cache_row=cache_rows, 
+                        cache_col=cache_cols
+                    )
+
+                    # remove cached elements from the input and filter
+                    input_size = (input_size[0] - cols_cached, input_size[1] - rows_cached)
+                    filter_size = (filter_size[0] - cols_cached, filter_size[1] - rows_cached)
+
+                    tiles.append(Tile(input_size, filter_size, output_size, layer_id,cached_elems))
+                    output_size = input_size # input of current layer = size of the tile of the next layer
+                
 
         # Reverse the construction to process the tiles in the order according to layer
         return tiles[::-1]
@@ -266,23 +307,97 @@ class depth_first_sim:
 
         # Get the dimensions of the last layer
 
+    def nber_of_cached_lines(self,filter,stride):
+        """
+        Returns the number of (vertical or horizontal) lines to cache.
+        """
+        # return the number of elements to cache in a line
+        return filter - (filter%2) - stride - 1
 
+    def calculate_cached_elems(self,filter,stride,cache_row=False,cache_col=False):
+        """
+        Calculate the number of elements to cache in a tile.
+        Args:
+        - filter: Tuple(int,int)
+        - stride: Tuple(int,int)
+        - cache_row: If the rows should be cached
+        - cache_col: If the columns should be cached
 
+        Returns:
+        - cached_elems: the total number of elements to cache
+        - cached_rows: the number of rows to cache
+        - cached_cols: the number of columns to cache
+        """
+        cached_elems = 0
 
-        # TODO: return a list of list of tiles
+        nber_cols = self.nber_of_cached_lines(filter[0],stride[0])
+        nber_rows = self.nber_of_cached_lines(filter[1],stride[1])
 
-if __name__ == "__main__":
+        cached_rows = 0
+        cached_cols = 0
+
+        if cache_col:
+            cached_elems += nber_cols*filter[1]
+            cached_cols = nber_cols
+
+        if cache_row:
+            cached_elems += nber_rows*filter[0]
+            cached_rows = nber_rows
+        
+        if cache_row and cache_col:
+            # Remove common part between cached rows and columns (has been counted twice)
+            cached_elems -= nber_cols*nber_rows
+        
+        # Occurs when stride is too big to have any cached element inside the current tile
+        if cached_elems < 0:
+            cached_elems = 0
+        
+        return cached_elems, cached_rows, cached_cols
+
+#demo with alexnet topology truncated to use the last 10 tiles
+def run_simulation(df_mode):
+
+    truncator = lambda x: x[0:10]
+
     runner = depth_first_sim()
     runner.set_params(
         conf_file="./configs/scale.cfg",
         # topology_file="./topologies/conv_nets/test.csv",
         topology_file="./topologies/conv_nets/alexnet.csv",
-        df_mode=df_mode.FULL_RECOMPUTE,
+        df_mode=df_mode,
         tile_size=(1,1),
         layer_fuse_cuts=["Conv"+str(i) for i in range(1,6,2)])
     
-    runner.run()
+    runner.run(truncator)
 
+if __name__ == "__main__":
+    run_simulation(df_mode.FULL_RECOMPUTE)
+    run_simulation(df_mode.FULL_CACHED)
+
+    # scheduled_tiles = [] # tiles to compute
+    # # 1. Separate layers into stacks based on layer_fuse_cuts
+    # stack_list = runner.create_stack_list()
+    
+    # # 2. Divide each stack into tiles
+    # for stack in stack_list:
+    #     tiles = runner.stack_tiling(stack)
+    #     scheduled_tiles.extend(tiles)
+    
+    # print(len(scheduled_tiles))
+
+    # nber_cached = 0
+    # nber_full_compute = 0
+
+    # for t in scheduled_tiles[50500:]:
+    #     if t.cached_elements == 0:
+    #         nber_full_compute += 1
+    #     else:
+    #         nber_cached += 1
+    # print(f"nber of tiles with cached elements: {nber_cached}")
+    # print(f"nber of tiles with full compute: {nber_full_compute}")
+
+    # for t in scheduled_tiles[50500:]:
+    #     print(t)
 
     # stack_cuts = runner.create_stack_list()
     # for s in stack_cuts:
