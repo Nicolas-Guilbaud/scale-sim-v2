@@ -16,6 +16,7 @@ class memory_report:
         self.access = 0 # represents a read or write
         self.avg_bw = 0
         self.operand = operand
+        self.sum = 1 # used to store the sum of the values
     
     def __add__(self, other):
         """
@@ -27,8 +28,15 @@ class memory_report:
         result.start_cycle = self.start_cycle + other.start_cycle
         result.stop_cycle = self.stop_cycle + other.stop_cycle
         result.access = self.access + other.access
-        result.avg_bw = self.avg_bw + other.avg_bw
+
+        result.sum = self.sum + other.sum
+        result.avg_bw = (self.avg_bw*self.sum + other.avg_bw*other.sum)/result.sum
         return result
+    
+    def get_detailed_report(self):
+        return f"{self.start_cycle}, \
+            {self.stop_cycle}, \
+            {self.access}"
     
     def generate_report(self,memory_system):
 
@@ -38,10 +46,11 @@ class memory_report:
         self.avg_bw = memory_system.avg_bw
     
     def __str__(self):
-        return f"Start Cycle: {self.start_cycle}, \
-            Stop Cycle: {self.stop_cycle}, \
-            Access: {self.access}, \
-            Average Bandwidth: {self.avg_bw}\n"
+        # Format: start_cycle, stop_cycle, access, avg_bw
+        return f"{self.start_cycle}, \
+            {self.stop_cycle}, \
+            {self.access}, \
+            {self.avg_bw}"
 
 class sram_report(memory_report):
     """

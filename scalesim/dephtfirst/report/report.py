@@ -16,6 +16,22 @@ class report:
         self.filter_dram_report = dram_report(operand.FILTER)
         self.ofmap_dram_report = dram_report(operand.OFMAP)
     
+    def get_ram_reports_as_list(self):
+        return [
+            self.ifmap_sram_report, 
+            self.filter_sram_report, 
+            self.ofmap_sram_report, 
+            self.ifmap_dram_report, 
+            self.filter_dram_report, 
+            self.ofmap_dram_report
+        ]
+    
+    def get_mem_bw(self):
+        return str([r.avg_bw for r in self.get_ram_reports_as_list()]).replace('[','').replace(']','')
+    
+    def get_detailed_mem_report(self):
+        return str([r.get_detailed_report() for r in self.get_ram_reports_as_list()]).replace('[','').replace(']','')
+    
     def generate_report(self,compute_system,memory_system,num_mac_unit):
         self.compute_report.generate_report(compute_system,memory_system,num_mac_unit)
 
@@ -26,7 +42,7 @@ class report:
         self.ifmap_dram_report.generate_report(memory_system)
         self.filter_dram_report.generate_report(memory_system)
         self.ofmap_dram_report.generate_report(memory_system)
-    
+
     def __add__(self, other):
         """
         Addition operator for the report object.
@@ -65,6 +81,7 @@ class compute_report:
         self.overall_util = 0
         self.mapping_eff = 0
         self.compute_util = 0
+        self.sum = 1 # keep track of the times the report is added
     
     def generate_report(self,compute_system, memory_system,num_mac_unit):
         self.total_cycles = memory_system.get_total_compute_cycles()
@@ -73,6 +90,7 @@ class compute_report:
         self.mapping_eff = compute_system.get_avg_mapping_efficiency() * 100
         self.compute_util = compute_system.get_avg_compute_utilization() * 100
     
+    #TODO: correct avg values
     def __add__(self, other):
         """
         Addition operator for the compute_report object.
@@ -83,14 +101,21 @@ class compute_report:
         result.total_cycles = self.total_cycles + other.total_cycles
         result.stall_cycles = self.stall_cycles + other.stall_cycles
         result.num_compute = self.num_compute + other.num_compute
-        result.overall_util = self.overall_util + other.overall_util
-        result.mapping_eff = self.mapping_eff + other.mapping_eff
-        result.compute_util = self.compute_util + other.compute_util
+
+        result.sum = self.sum + other.sum
+
+        # Take the mean value
+
+        result.overall_util = (self.overall_util * self.sum + other.overall_util * other.sum) / result.sum
+        result.mapping_eff = (self.mapping_eff * self.sum + other.mapping_eff * other.sum) / result.sum
+        result.compute_util = (self.compute_util * self.sum + other.compute_util * other.sum) / result.sum
+
         return result
     
     def __str__(self):
-        return f"Total Cycles: {self.total_cycles}\n\
-            Stall Cycles: {self.stall_cycles}\n\
-            Overall Utilization: {self.overall_util}%\n\
-            Mapping Efficiency: {self.mapping_eff}%\n\
-            Compute Utilization: {self.compute_util}%\n"
+        # Format: Total Cycles, Stall Cycles, Overall Utilization, Mapping Efficiency, Compute Utilization
+        return f"{self.total_cycles}, \
+            {self.stall_cycles}, \
+            {self.overall_util}, \
+            {self.mapping_eff}, \
+            {self.compute_util}"

@@ -9,6 +9,7 @@ from scalesim.dephtfirst.report.report import report
 from scalesim.dephtfirst.utils import Tile, df_mode
 from math import ceil
 from tqdm import tqdm
+import os
 
 class depth_first_sim:
     """
@@ -21,7 +22,7 @@ class depth_first_sim:
         self.compute_system = systolic_compute_os()
         self.memory_system = mem_dbsp()
         
-        self.total_report = report()
+        self.reports = []
         self.op_mat_obj = opmat()
 
         self.memory_system_ready_flag = False
@@ -110,11 +111,13 @@ class depth_first_sim:
             if truncator:
                 truncated_list = truncator(tiles)
 
+            stack_report = report()
+
             for t in tqdm(truncated_list,disable=not self.verbose):
-                self.process_a_tile(t)
-        
-        print(self.total_report)
-        print(f"Total tiles: {total_tiles}")
+                tile_report = self.process_a_tile(t)
+                stack_report += tile_report
+            
+            self.reports.append(stack_report)
 
 
     def process_a_tile(self,tile):
@@ -165,9 +168,7 @@ class depth_first_sim:
         # 5. Generate report
         tile_report = report()
         tile_report.generate_report(self.compute_system,self.memory_system,self.num_mac_unit)
-
-        # 5. Add results and repeat for next tile
-        self.total_report = self.total_report + tile_report
+        return tile_report
 
     def setup_memory_if_not_ready(self):
         """
@@ -360,6 +361,55 @@ class depth_first_sim:
         
         return cached_elems, cached_rows, cached_cols
 
+    def save_reports(self,top_path):
+        """
+        Save the reports in files.
+        """
+        if not os.path.isdir(top_path):
+            os.mkdir(top_path)
+
+        compute_report_name = top_path + '/COMPUTE_REPORT.csv'
+        compute_report = open(compute_report_name, 'w')
+        header = 'StackID, Total Cycles, Stall Cycles, Overall Util %, Mapping Efficiency %, Compute Util %,\n'
+        compute_report.write(header)
+
+        bandwidth_report_name = top_path + '/BANDWIDTH_REPORT.csv'
+        bandwidth_report = open(bandwidth_report_name, 'w')
+        header = 'StackID, Avg IFMAP SRAM BW, Avg FILTER SRAM BW, Avg OFMAP SRAM BW, '
+        header += 'Avg IFMAP DRAM BW, Avg FILTER DRAM BW, Avg OFMAP DRAM BW,\n'
+        bandwidth_report.write(header)
+
+        detail_report_name = top_path + '/DETAILED_ACCESS_REPORT.csv'
+        detail_report = open(detail_report_name, 'w')
+        header = 'StackID, '
+        header += 'SRAM IFMAP Start Cycle, SRAM IFMAP Stop Cycle, SRAM IFMAP Reads, '
+        header += 'SRAM Filter Start Cycle, SRAM Filter Stop Cycle, SRAM Filter Reads, '
+        header += 'SRAM OFMAP Start Cycle, SRAM OFMAP Stop Cycle, SRAM OFMAP Writes, '
+        header += 'DRAM IFMAP Start Cycle, DRAM IFMAP Stop Cycle, DRAM IFMAP Reads, '
+        header += 'DRAM Filter Start Cycle, DRAM Filter Stop Cycle, DRAM Filter Reads, '
+        header += 'DRAM OFMAP Start Cycle, DRAM OFMAP Stop Cycle, DRAM OFMAP Writes,\n'
+        detail_report.write(header)
+
+        for i,report in enumerate(self.reports):
+            log = str(i) + ', '
+            log += str(report.compute_report)
+            log += ',\n'
+            compute_report.write(log)
+        
+            log = str(i) + ', '
+            log += report.get_mem_bw()
+            log += ',\n'
+            bandwidth_report.write(log)
+        
+            log = str(i) + ', '
+            log += report.get_detailed_mem_report()
+            log += ',\n'
+            detail_report.write(log)
+
+        compute_report.close()
+        bandwidth_report.close()
+        detail_report.close()
+
 #demo with alexnet topology truncated to use the last 10 tiles
 def run_simulation(df_mode):
 
@@ -375,6 +425,7 @@ def run_simulation(df_mode):
         layer_fuse_cuts=["Conv4"])
     
     runner.run(truncator)
+    runner.save_reports("./test_runs/depth_first")
 
 #df_mode, tile_cuts
 
