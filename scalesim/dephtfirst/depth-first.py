@@ -1,6 +1,7 @@
 import sys
 import os
 
+#TODO: to be removed
 sys.path.append(os.getcwd())
 
 from scalesim.scale_config import scale_config as cfg
@@ -11,7 +12,7 @@ from scalesim.compute.systolic_compute_ws import systolic_compute_ws
 from scalesim.compute.systolic_compute_is import systolic_compute_is
 from scalesim.memory.double_buffered_scratchpad_mem import double_buffered_scratchpad as mem_dbsp
 from report.report import report
-from utils import Tile, Queue, Layer, df_mode
+from utils import Tile, df_mode
 from math import ceil
 
 class depth_first_sim:
@@ -373,37 +374,3 @@ def run_simulation(df_mode):
 if __name__ == "__main__":
     run_simulation(df_mode.FULL_RECOMPUTE)
     run_simulation(df_mode.FULL_CACHED)
-
-    # scheduled_tiles = [] # tiles to compute
-    # # 1. Separate layers into stacks based on layer_fuse_cuts
-    # stack_list = runner.create_stack_list()
-    
-    # # 2. Divide each stack into tiles
-    # for stack in stack_list:
-    #     tiles = runner.stack_tiling(stack)
-    #     scheduled_tiles.extend(tiles)
-    
-    # print(len(scheduled_tiles))
-
-    # nber_cached = 0
-    # nber_full_compute = 0
-
-    # for t in scheduled_tiles[50500:]:
-    #     if t.cached_elements == 0:
-    #         nber_full_compute += 1
-    #     else:
-    #         nber_cached += 1
-    # print(f"nber of tiles with cached elements: {nber_cached}")
-    # print(f"nber of tiles with full compute: {nber_full_compute}")
-
-    # for t in scheduled_tiles[50500:]:
-    #     print(t)
-
-    # stack_cuts = runner.create_stack_list()
-    # for s in stack_cuts:
-    #     tiles = runner.stack_tiling(s)
-    #     print(len(tiles))
-    #     for t in tiles[0:5]:
-    #         print(t)
-    #     print()
-    
