@@ -1,9 +1,3 @@
-import sys
-import os
-
-#TODO: to be removed
-sys.path.append(os.getcwd())
-
 from scalesim.scale_config import scale_config as cfg
 from scalesim.topology_utils import topologies as topo
 from scalesim.compute.operand_matrix import operand_matrix as opmat
@@ -11,9 +5,10 @@ from scalesim.compute.systolic_compute_os import systolic_compute_os
 from scalesim.compute.systolic_compute_ws import systolic_compute_ws
 from scalesim.compute.systolic_compute_is import systolic_compute_is
 from scalesim.memory.double_buffered_scratchpad_mem import double_buffered_scratchpad as mem_dbsp
-from report.report import report
-from utils import Tile, df_mode
+from scalesim.dephtfirst.report.report import report
+from scalesim.dephtfirst.utils import Tile, df_mode
 from math import ceil
+from tqdm import tqdm
 
 class depth_first_sim:
     """
@@ -50,6 +45,7 @@ class depth_first_sim:
                     df_mode=df_mode.FULL_RECOMPUTE,
                     tile_size=(1,1),
                     layer_fuse_cuts=[], #Format: [layer_name_1, layer_name_4]
+                    verbose=True
                    ):
         """
         Set the parameters for the depth-first simulation.
@@ -87,6 +83,8 @@ class depth_first_sim:
         arr_dims = self.config.get_array_dims()
         self.num_mac_unit = arr_dims[0] * arr_dims[1]
 
+        self.verbose = verbose
+
     
     def run(self, truncator=None):
         """
@@ -99,20 +97,24 @@ class depth_first_sim:
         
         # 1. Separate layers into stacks based on layer_fuse_cuts
         self.stack_list = self.create_stack_list()
+
+        total_tiles = 0
         
         # 2. Divide each stack into tiles
         for stack in self.stack_list:
             tiles = self.stack_tiling(stack)
-            scheduled_tiles.extend(tiles)
+            total_tiles += len(tiles)
+
+            truncated_list = tiles
+
+            if truncator:
+                truncated_list = truncator(tiles)
+
+            for t in tqdm(truncated_list,disable=not self.verbose):
+                self.process_a_tile(t)
         
-        #TODO: perform the following for each scheduled tiles !
-
-        if truncator:
-            truncated_list = truncator(scheduled_tiles)
-
-        for tile in truncated_list:
-            self.process_a_tile(tile)
         print(self.total_report)
+        print(f"Total tiles: {total_tiles}")
 
 
     def process_a_tile(self,tile):
@@ -210,7 +212,7 @@ class depth_first_sim:
                     ifmap_backing_buf_bw=ifmap_backing_bw,
                     filter_backing_buf_bw=filter_backing_bw,
                     ofmap_backing_buf_bw=ofmap_backing_bw,
-                    verbose=self.verbose,
+                    verbose=False,
                     estimate_bandwidth_mode=estimate_bandwidth_mode
             )
 
@@ -237,6 +239,7 @@ class depth_first_sim:
             if l[0] in self.layer_fuse_cuts:
                 stack_list.append(stack)
                 stack = []
+        stack_list.append(stack)
         return stack_list
     
     def stack_tiling(self,stack):
@@ -255,6 +258,8 @@ class depth_first_sim:
         """
 
         #TODO: make it work with cached mode
+
+        assert len(stack) > 0, "Stack is empty"
 
         last_layer = stack[-1]
 
@@ -358,7 +363,7 @@ class depth_first_sim:
 #demo with alexnet topology truncated to use the last 10 tiles
 def run_simulation(df_mode):
 
-    truncator = lambda x: x[0:10]
+    truncator = lambda x: x[:]
 
     runner = depth_first_sim()
     runner.set_params(
@@ -366,11 +371,13 @@ def run_simulation(df_mode):
         # topology_file="./topologies/conv_nets/test.csv",
         topology_file="./topologies/conv_nets/alexnet.csv",
         df_mode=df_mode,
-        tile_size=(1,1),
-        layer_fuse_cuts=["Conv"+str(i) for i in range(1,6,2)])
+        tile_size=(7,7),
+        layer_fuse_cuts=["Conv4"])
     
     runner.run(truncator)
 
+#df_mode, tile_cuts
+
 if __name__ == "__main__":
-    run_simulation(df_mode.FULL_RECOMPUTE)
+    # run_simulation(df_mode.FULL_RECOMPUTE)
     run_simulation(df_mode.FULL_CACHED)

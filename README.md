@@ -29,6 +29,16 @@ SCALE-Sim can be run by using the ```scale.py``` script from the repository and 
 
 ```$ python3 scale.py -c <path_to_config_file> -t <path_to_topology_file> -p <path_to_output_log_dir>```
 
+There are some extra parameters if you want to run a depth-first scheduling version:
+
+```-tile_size <columns_of_a_tile> <rows_of_a_tile> -df_mode <mode> -stack_cut <LayerName1> <LayerName2> ...```
+
+The valid modes are:
+
+- 'full_recompute' (or 1)
+- 'h_chached_v_recompute' (or 2)
+- 'full_cached' (or 3)
+
 Try it now in this jupyter [notebook](https://github.com/scalesim-project/scalesim-tutorial-materials/blob/main/scaledemo.ipynb).
 
 ### *Running from source*
